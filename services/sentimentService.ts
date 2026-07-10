@@ -9,6 +9,7 @@
  */
 
 import type { SentimentData } from '../lib/types';
+import { queryRedditSignals, aggregateSignalsToMetrics } from './reddit/processingService';
 
 // ── Category Sentiment Priors ─────────────────────────────────
 const CATEGORY_SENTIMENT: Record<string, number> = {
@@ -81,7 +82,31 @@ function buildSummary(label: string, category: string, score: number): string {
 
 // ── Main Service Function ──────────────────────────────────────
 
-export async function getSentimentData(idea: string, category: string): Promise<SentimentData> {
+export async function getSentimentData(
+  idea: string,
+  category: string,
+  ideaEmbedding?: number[]
+): Promise<SentimentData & { reddit_evidence?: { title: string; url: string; upvotes: number }[] }> {
+
+  // ── Try real Reddit signals first ──────────────────────────
+  if (ideaEmbedding && ideaEmbedding.length > 0) {
+    try {
+      const signals = await queryRedditSignals(ideaEmbedding, 15, 0.55);
+      if (signals.length >= 3) {
+        const metrics = aggregateSignalsToMetrics(signals);
+        const score   = metrics.sentiment_score;
+        const label   = classifySentiment(score);
+        const pct     = Math.round(score * 100);
+        const summary = `Based on ${metrics.reddit_post_count} Reddit posts, ~${pct}% of demand signals are positive. `
+          + `Top communities: ${[...new Set(signals.slice(0, 5).map(s => 'r/' + s.subreddit))].join(', ')}.`;
+        return { score, label, summary, reddit_evidence: metrics.top_posts };
+      }
+    } catch {
+      // fall through to simulation
+    }
+  }
+
+  // ── Fallback: simulated sentiment ──────────────────────────
   const base = CATEGORY_SENTIMENT[category] ?? CATEGORY_SENTIMENT.default;
 
   const lower = idea.toLowerCase();

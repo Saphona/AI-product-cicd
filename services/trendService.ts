@@ -11,6 +11,7 @@
 
 import type { TrendData, TrendStage } from '../lib/types';
 import { classifyTrendStage } from '../lib/scoring';
+import { queryRedditSignals, aggregateSignalsToMetrics } from './reddit/processingService';
 
 // ── Category Trend Baselines ──────────────────────────────────
 // These represent "prior beliefs" about category trend momentum.
@@ -120,8 +121,36 @@ function seededRand(seed: string): number {
  *
  * @future Replace body with: `return fetchRealTrendData(idea, category);`
  */
-export async function getTrendData(idea: string, category: string): Promise<TrendData> {
-  // Base from category
+export async function getTrendData(
+  idea: string,
+  category: string,
+  ideaEmbedding?: number[]
+): Promise<TrendData & { reddit_post_count?: number; top_posts?: { title: string; url: string; upvotes: number }[] }> {
+
+  // ── Try real Reddit signals first ──────────────────────────
+  if (ideaEmbedding && ideaEmbedding.length > 0) {
+    try {
+      const signals = await queryRedditSignals(ideaEmbedding, 15, 0.55);
+      if (signals.length >= 3) {
+        const metrics = aggregateSignalsToMetrics(signals);
+        const trend_stage: TrendStage = classifyTrendStage(metrics.mentions_growth);
+        const search_volume = Math.min(1, metrics.mentions_growth * 0.9 + 0.05);
+        const time_series = generateTimeSeries(0.3, metrics.mentions_growth * 0.08);
+        return {
+          mentions_growth: metrics.mentions_growth,
+          search_volume,
+          trend_stage,
+          time_series,
+          reddit_post_count: metrics.reddit_post_count,
+          top_posts: metrics.top_posts,
+        };
+      }
+    } catch {
+      // fall through to simulation
+    }
+  }
+
+  // ── Fallback: simulated trend data ─────────────────────────
   const base = CATEGORY_BASELINES[category] ?? CATEGORY_BASELINES.default;
 
   // Keyword signal

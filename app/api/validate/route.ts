@@ -1,53 +1,45 @@
-/**
- * app/api/validate/route.ts — Product Validation API Endpoint
- *
- * Pipeline:
- *   1. Generate embedding for the idea
- *   2. Search Supabase for similar ideas (vector similarity)
- *   3. Fetch trend, sentiment, market data in parallel
- *   4. Calculate scores
- *   5. Run AI analysis (Gemini)
- *   6. Store result in Supabase
- *   7. Return full ValidationResult to client
- */
-
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { generateEmbedding } from '@/lib/embeddings';
-import { calculateScore } from '@/lib/scoring';
+import { searchSimilarIdeas, storeValidation } from '@/similarity/supabase';
 import { getTrendData } from '@/services/trendService';
 import { getSentimentData } from '@/services/sentimentService';
 import { getMarketData } from '@/services/marketService';
-import { searchSimilarIdeas, storeValidation } from '@/similarity/supabase';
+import { getSubredditsForCategory } from '@/services/reddit/discoveryService';
+import { scrapeMultipleSubreddits } from '@/services/reddit/scraperService';
+import { processAndStorePosts } from '@/services/reddit/processingService';
+import { calculateScore } from '@/lib/scoring';
 import { analyzeWithAI } from '@/similarity/aiAnalysis';
 import type { ValidationResult } from '@/lib/types';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { idea, category, market, cost } = body;
 
-    // Basic validation
-    if (!idea || !category || !market || cost === undefined) {
-      return NextResponse.json(
-        { error: 'Missing required fields: idea, category, market, cost' },
-        { status: 400 }
-      );
+    if (!idea || !category || !market) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // ── Step 1: Generate embedding ────────────────────────────
-    const embedding = await generateEmbedding(`${idea} ${category} ${market}`);
+    // Step 1: Generate embedding
+    const embedding = await generateEmbedding(idea);
 
-    // ── Step 2: Search similar ideas ─────────────────────────
+    // Step 2: Vector search for similar ideas
     const similarIdeas = await searchSimilarIdeas(embedding, 5);
 
-    // ── Step 3: Fetch data in parallel ────────────────────────
+    // Step 3a: Background Reddit scrape (non-blocking — enriches future queries)
+    getSubredditsForCategory(idea, category)
+      .then(subs => scrapeMultipleSubreddits(subs.slice(0, 5), idea, false))
+      .then(posts => processAndStorePosts(posts))
+      .catch(() => {}); // fire and forget — never blocks the response
+
+    // Step 3b: Gather signals — pass embedding so services use real Reddit data if available
     const [trendData, sentimentData, marketData] = await Promise.all([
-      getTrendData(idea, category),
-      getSentimentData(idea, category),
+      getTrendData(idea, category, embedding),
+      getSentimentData(idea, category, embedding),
       getMarketData(idea, market),
     ]);
 
-    // ── Step 4: Calculate scores ──────────────────────────────
+    // Step 4: Calculate scoring
     const scores = calculateScore({
       mentions_growth: trendData.mentions_growth,
       search_volume: trendData.search_volume,
@@ -55,8 +47,8 @@ export async function POST(req: Request) {
       competition: marketData.competition_index,
     });
 
-    // ── Step 5: AI analysis ───────────────────────────────────
-    const aiAnalysis = await analyzeWithAI({
+    // Step 5: AI Analysis (Gemini)
+    const aiResult = await analyzeWithAI({
       idea,
       category,
       market,
@@ -68,7 +60,7 @@ export async function POST(req: Request) {
       scores,
     });
 
-    // ── Step 6: Assemble result ───────────────────────────────
+    // Step 6: Build final result
     const result: ValidationResult = {
       idea,
       category,
@@ -79,25 +71,18 @@ export async function POST(req: Request) {
       sentimentData,
       marketData,
       similarIdeas,
-      demand_score: aiAnalysis.demand_score,
-      estimated_price: aiAnalysis.estimated_price,
-      profit_margin: aiAnalysis.profit_margin,
-      sentiment_summary: aiAnalysis.sentiment_summary,
-      suggestions: aiAnalysis.suggestions,
-      verdict: aiAnalysis.verdict,
+      ...aiResult,
       created_at: new Date().toISOString(),
     };
 
-    // ── Step 7: Store (non-blocking) ──────────────────────────
-    storeValidation(result, embedding).catch((err) =>
-      console.error('[api/validate] storeValidation error:', err)
-    );
+    // Step 7: Store in Supabase (fire-and-forget)
+    storeValidation(result, embedding).catch(console.error);
 
     return NextResponse.json(result);
-  } catch (error) {
-    console.error('[api/validate] Unhandled error:', error);
+  } catch (error: unknown) {
+    console.error('Validation error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     );
   }
