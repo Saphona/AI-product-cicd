@@ -1,0 +1,53 @@
+# build docker image
+# run it 
+#push to docker hub
+# ssh into vm and start the new image
+
+name: Build and push
+ 
+on:
+  push:
+    branches: 
+         -main
+  pull:
+      branches:
+         -main
+
+jobs:
+    build:
+         runs-on: ubuntu-latest
+    steps:
+     - name: checkout the code
+     - uses: actions/checkout@v2
+       #clones your codebase to ubuntu machine
+
+           # 2. Run any new database migrations against Supabase FIRST.
+      #    App code often depends on new columns/tables existing before
+      #    it starts, so migrations run before the image is deployed.)
+     - name: Run Supabase migrations
+       uses: supabase/setup-cli@v1
+       with:
+          version: latest
+     - run: | 
+          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase db push
+        # supabase links which supabase db to connect
+       env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+
+
+     - name: Docker login
+       uses: docker/login-action@v2
+       with:
+          username: ${{secrets.DOCKERHUB_USR}}
+          password: ${{secrets.DOCKERHUB_TOKEN}}
+
+     - name: Build & push
+       uses: docker/build-push-action@v4
+       with:
+          context: .
+          file: .
+          
+
