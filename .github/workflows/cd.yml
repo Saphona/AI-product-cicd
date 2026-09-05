@@ -8,17 +8,17 @@ name: Build and push
 on:
   push:
     branches: 
-         -main
-  pull:
+         - main
+  pull_request:
       branches:
-         -main
+         - main
 
 jobs:
     build:
          runs-on: ubuntu-latest
     steps:
      - name: checkout the code
-     - uses: actions/checkout@v2
+       uses: actions/checkout@v2
        #clones your codebase to ubuntu machine
 
            # 2. Run any new database migrations against Supabase FIRST.
@@ -44,10 +44,15 @@ jobs:
           username: ${{secrets.DOCKERHUB_USR}}
           password: ${{secrets.DOCKERHUB_TOKEN}}
 
-     - name: Build & push
+     - name: Build & push 
        uses: docker/build-push-action@v4
        with:
           context: .
-          file: .
-          
-
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USR }}/ai-product-predictor:latest
+            ${{ secrets.DOCKERHUB_USR }}/ai-product-predictor:${{ github.sha }}
+          build-args: |
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
