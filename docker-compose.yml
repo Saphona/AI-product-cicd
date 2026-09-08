@@ -1,6 +1,6 @@
 services:
   app:
-    image: YOUR_DOCKERHUB_USERNAME/ai-product-predictor:latest
+    image: fouzan397/ai-product-predictor/ai-product-predictor:latest
     container_name: app
     restart: unless-stopped
     env_file:
