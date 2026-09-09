@@ -9,9 +9,9 @@ on:
   push:
     branches: 
          - aws-oidc-test
-  pull_request:
-      branches:
-         - aws-oidc-test
+  # pull_request:
+  #     branches:
+  #        - aws-oidc-test
 
 
 permissions:
@@ -22,20 +22,24 @@ permissions:
 jobs:  #jobname is oidc-test
   oidc-test:
     runs-on: ubuntu-latest
+
+
     steps:
      - name: checkout the code
        uses: actions/checkout@v4
        #clones your codebase to ubuntu machine
+     - name: Debug OIDC
+       uses: github/actions-oidc-debugger@main
 
-     - name: Configure AWS Credentials for OIDC
-       uses: aws-actions/configure-aws-credentials@v6.2.4
-       with:
-        #  audience: sts.amazonaws.com.cn
-         aws-region: us-east-1
-         role-to-assume: arn:aws:iam::161242380137:role/Ai-prod-github-actions-oidc
-                # take this role from 
-     - name: Test AWS Credentials
-       run: aws sts get-caller-identity
+    #  - name: Configure AWS Credentials for OIDC
+    #    uses: aws-actions/configure-aws-credentials@v6.2.4
+    #    with:
+    #     #  audience: sts.amazonaws.com.cn
+    #      aws-region: us-east-1
+    #      role-to-assume: arn:aws:iam::161242380137:role/Ai-prod-github-actions-oidc
+    #             # take this role from 
+    #  - name: Test AWS Credentials
+    #    run: aws sts get-caller-identity
 
 
 # # build docker image
