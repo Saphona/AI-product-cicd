@@ -3,68 +3,108 @@
 #push to docker hub
 # ssh into vm and start the new image
 
-name: Build and push
+name: github aws oidc 
  
 on:
   push:
     branches: 
-         - main
+         - aws-oidc-test
   pull_request:
       branches:
-         - main
+         - aws-oidc-test
 
-jobs:
-  build:
+
+permissions:
+  id-token: write   # This is required for requesting the JWT
+  contents: read    # This is required for actions/checkout
+
+
+jobs:  #jobname is oidc-test
+  oidc-test:
     runs-on: ubuntu-latest
     steps:
      - name: checkout the code
-       uses: actions/checkout@v2
+       uses: actions/checkout@v4
        #clones your codebase to ubuntu machine
 
-           # 2. Run any new database migrations against Supabase FIRST.
-      #    App code often depends on new columns/tables existing before
-      #    it starts, so migrations run before the image is deployed.)
-     - name: Run Supabase migrations
-       uses: supabase/setup-cli@v1
+     - name: Configure AWS Credentials for OIDC
+       uses: aws-actions/configure-aws-credentials@v6.2.4
        with:
-          version: latest
-     - run: | 
-          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-          supabase db push
-        # supabase links which supabase db to connect
-       env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        #  audience: sts.amazonaws.com.cn
+         aws-region: us-east-1
+         role-to-assume: arn:aws:iam::161242380137:role/Ai-prod-github-actions-oidc
+                # take this role from 
+     - name: Test AWS Credentials
+       run: aws sts get-caller-identity
+
+
+# # build docker image
+# # run it 
+# #push to docker hub
+# # ssh into vm and start the new image
+
+# name: Build and push
+ 
+# on:
+#   push:
+#     branches: 
+#          - main
+#   pull_request:
+#       branches:
+#          - main
+
+# jobs:
+#   build:
+#     runs-on: ubuntu-latest
+#     steps:
+#      - name: checkout the code
+#        uses: actions/checkout@v2
+#        #clones your codebase to ubuntu machine
+
+#            # 2. Run any new database migrations against Supabase FIRST.
+#       #    App code often depends on new columns/tables existing before
+#       #    it starts, so migrations run before the image is deployed.)
+#      - name: Run Supabase migrations
+#        uses: supabase/setup-cli@v1
+#        with:
+#           version: latest
+#      - run: | 
+#           supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+#           supabase db push
+#         # supabase links which supabase db to connect
+#        env:
+#           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+#           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
 
 
-     - name: Docker login
-       uses: docker/login-action@v2
-       with:
-          username: ${{secrets.DOCKERHUB_USR}}
-          password: ${{secrets.DOCKERHUB_TOKEN}}
+#      - name: Docker login
+#        uses: docker/login-action@v2
+#        with:
+#           username: ${{secrets.DOCKERHUB_USR}}
+#           password: ${{secrets.DOCKERHUB_TOKEN}}
 
-     - name: Build & push 
-       uses: docker/build-push-action@v4
-       with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USR }}/ai-product-predictor:latest
-            ${{ secrets.DOCKERHUB_USR }}/ai-product-predictor:${{ github.sha }}
-          build-args: |
-            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+#      - name: Build & push 
+#        uses: docker/build-push-action@v4
+#        with:
+#           context: .
+#           file: ./Dockerfile
+#           push: true
+#           tags: |
+#             ${{ secrets.DOCKERHUB_USR }}/ai-product-predictor:latest
+#             ${{ secrets.DOCKERHUB_USR }}/ai-product-predictor:${{ github.sha }}
+#           build-args: |
+#             NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+#             NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
-        # 5. SSH into the server and restart the app with the new image
-     - name: Deploy to server
-       uses: appleboy/ssh-action@v1.0.3
-       with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd ${{ secrets.DEPLOY_PATH }}
-            docker compose pull app
-            docker compose up -d app      
+#         # 5. SSH into the server and restart the app with the new image
+#      - name: Deploy to server
+#        uses: appleboy/ssh-action@v1.0.3
+#        with:
+#           host: ${{ secrets.SSH_HOST }}
+#           username: ${{ secrets.SSH_USERNAME }}
+#           key: ${{ secrets.SSH_PRIVATE_KEY }}
+#           script: |
+#             cd ${{ secrets.DEPLOY_PATH }}
+#             docker compose pull app
+#             docker compose up -d app      
