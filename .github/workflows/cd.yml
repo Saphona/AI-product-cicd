@@ -1,36 +1,42 @@
-# build docker image
-# run it 
-#push to docker hub
-# ssh into vm and start the new image
+name: github aws oidc
 
-name: github aws oidc 
- 
 on:
   push:
-    branches: 
-         - aws-oidc-test
-  # pull_request:
-  #     branches:
-  #        - aws-oidc-test
-
+    branches:
+      - aws-oidc-test
 
 permissions:
-  id-token: write   # This is required for requesting the JWT
-  contents: read    # This is required for actions/checkout
+  id-token: write
+  contents: read
 
-
-jobs:  #jobname is oidc-test
+jobs:
   oidc-test:
     runs-on: ubuntu-latest
 
-
     steps:
-     - name: checkout the code
-       uses: actions/checkout@v4
-       #clones your codebase to ubuntu machine
-     - name: Debug OIDC
-       uses: github/actions-oidc-debugger@main
+      - name: checkout the code
+        uses: actions/checkout@v4
 
+      - name: Show OIDC claims
+        shell: bash
+        run: |
+          RESPONSE=$(curl -s \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL")
+
+          TOKEN=$(echo "$RESPONSE" | jq -r '.value')
+
+          PAYLOAD=$(echo "$TOKEN" | cut -d '.' -f 2)
+
+          PAYLOAD=$(echo "$PAYLOAD" | base64 -d 2>/dev/null || true)
+
+          echo "$PAYLOAD" | jq '{
+            sub: .sub,
+            aud: .aud,
+            repository: .repository,
+            repository_owner: .repository_owner,
+            ref: .ref
+          }'
     #  - name: Configure AWS Credentials for OIDC
     #    uses: aws-actions/configure-aws-credentials@v6.2.4
     #    with:
